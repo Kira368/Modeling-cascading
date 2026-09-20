@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Каскадные отказы energosети РК — симулятор атаки</title>
+<style>
+  :root{
+    --bg: #0d1420;
+    --panel: #131c2b;
+    --panel-line: #223049;
+    --grid-line: #1a2436;
+    --text: #dbe4f0;
+    --text-dim: #7c8aa3;
+    --ok: #4fb0a5;
+    --ok-dim: #2c4a47;
+    --warn: #e8a33d;
+    --danger: #d9634a;
+    --accent: #4f8ff7;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin:0;
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  header{
+    padding: 28px clamp(16px, 4vw, 48px) 18px;
+    border-bottom: 1px solid var(--panel-line);
+  }
+  header .eyebrow{
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+  header h1{
+    margin: 0 0 6px;
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  header p{
+    margin: 0;
+    max-width: 640px;
+    color: var(--text-dim);
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+
+  main{
+    display: grid;
+    grid-template-columns: 300px 1fr 320px;
+    gap: 1px;
+    background: var(--panel-line);
+    min-height: calc(100vh - 116px);
+  }
+  @media (max-width: 980px){
+    main{ grid-template-columns: 1fr; }
+  }
+
+  .panel{
+    background: var(--panel);
+    padding: 22px;
+  }
+
+  .panel h2{
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: 0.01em;
+    color: var(--text-dim);
+    margin: 0 0 16px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--panel-line);
+    padding-bottom: 10px;
+  }
+
+  /* ---- controls ---- */
+  label{
+    display:block;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  select, input[type=range]{
+    width: 100%;
+  }
+  select{
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--panel-line);
+    padding: 9px 10px;
+    border-radius: 3px;
+    font-family: var(--sans);
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+  .field{ margin-bottom: 18px; }
+  .field .value{
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 13px;
+  }
+  input[type=range]{
+    accent-color: var(--accent);
+  }
+
+  button{
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 14px;
+    border-radius: 3px;
+    border: 1px solid var(--panel-line);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  button.primary{
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #061019;
+    font-weight: 600;
+  }
+  button:disabled{ opacity: 0.4; cursor: default; }
+  button:hover:not(:disabled){ filter: brightness(1.08); }
+
+  .step-readout{
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 14px;
+    line-height: 1.7;
+  }
+  .step-readout b{ color: var(--text); }
+
+  .legend{
+    display:flex; flex-direction:column; gap: 8px;
+    margin-top: 18px; font-size: 12.5px; color: var(--text-dim);
+  }
+  .legend .row{ display:flex; align-items:center; gap:8px; }
+  .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+  /* ---- defense panel ---- */
+  .defense-box{
+    border: 1px solid var(--panel-line);
+    border-radius: 4px;
+    padding: 12px 12px 4px;
+    margin-bottom: 16px;
+    background: rgba(79,143,247,0.04);
+  }
+  .defense-box .dtitle{
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 10px;
+    letter-spacing: 0.01em;
+  }
+  .defense-opt{
+    display:flex;
+    align-items:flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 12.5px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .defense-opt input{ margin-top: 3px; accent-color: var(--accent); flex-shrink:0; }
+  .defense-opt .odesc{ color: var(--text-dim); font-size: 11.5px; display:block; margin-top: 1px; }
+
+  .defense-summary{
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ok);
+    background: var(--ok-dim);
+    border-radius: 3px;
+    padding: 8px 10px;
+    margin-top: 10px;
+    line-height: 1.6;
+    display:none;
+  }
+  .defense-summary.active{ display:block; }
+  .defense-summary b{ color: var(--text); }
+
+  .edge.backup{ stroke: var(--accent); stroke-width: 2; stroke-dasharray: 2 4; opacity: 0.85; }
+  .node-circle.shielded{ stroke: var(--accent); stroke-width: 3; }
+  .node-circle.shed{ stroke: var(--warn); stroke-width: 3; }
+
+  /* ---- graph ---- */
+  .graph-wrap{
+    background: var(--panel);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 16px;
+    position: relative;
+  }
+  svg#graph{ width: 100%; height: auto; max-height: 640px; }
+  .edge{ stroke: #2b3a54; stroke-width: 2; }
+  .edge.hot{ stroke: var(--danger); stroke-width: 2.5; stroke-dasharray: 5 4; }
+  .node-circle{ stroke: #060a10; stroke-width: 2; transition: fill 0.25s ease; }
+  .node-label{
+    font-family: var(--mono);
+    font-size: 11px;
+    fill: var(--text);
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .node-sub{
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--text-dim);
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  /* ---- results panel ---- */
+  table{
+    width:100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    font-family: var(--mono);
+  }
+  th, td{
+    text-align: left;
+    padding: 7px 4px;
+    border-bottom: 1px solid var(--panel-line);
+  }
+  th{ color: var(--text-dim); font-weight: 500; }
+  tr.current-row td{ color: var(--accent); }
+
+  .chart-bar-row{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .chart-bar-label{ width: 92px; font-size: 11px; font-family: var(--mono); color: var(--text-dim); flex-shrink:0; }
+  .chart-bar-track{ flex:1; background: var(--bg); border-radius: 2px; overflow:hidden; height: 14px; }
+  .chart-bar-fill{ height: 100%; background: linear-gradient(90deg, var(--accent), var(--danger)); }
+  .chart-bar-value{ width: 58px; text-align:right; font-family: var(--mono); font-size: 11px; color: var(--text-dim); flex-shrink:0; }
+
+  footer{
+    padding: 16px clamp(16px, 4vw, 48px);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--panel-line);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">ЕЭС РК · упрощённая учебная модель</div>
+  <h1>Каскадные отказы энергосети при кибератаке</h1>
+  <p>Выбери узел атаки — модель посчитает каскад по 12-узловой сети (алгоритм локального перераспределения нагрузки) и оценит аварийные выбросы CO₂. Ниже можно включить меры киберзащиты и сравнить, насколько они снижают масштаб каскада.</p>
+</header>
+
+<main>
+  <section class="panel" id="controls">
+    <h2>Параметры атаки</h2>
+
+    <label for="nodeSelect">Атакованный узел</label>
+    <select id="nodeSelect"></select>
+
+    <div class="field">
+      <label>Порог отключения (threshold): <span class="value" id="thresholdValue">1.5</span></label>
+      <input type="range" id="thresholdSlider" min="1.1" max="2.4" step="0.1" value="1.5">
+    </div>
+
+    <div class="defense-box">
+      <div class="dtitle">🛡 Меры киберзащиты</div>
+
+      <label class="defense-opt">
+        <input type="checkbox" id="defIsolate">
+        <span>Автоматическая изоляция узла
+          <span class="odesc">Система обнаружения вторжений (IDS) отключает скомпрометированный узел от сети раньше, чем его нагрузка успевает перераспределиться на соседей.</span>
+        </span>
+      </label>
+
+      <label class="defense-opt">
+        <input type="checkbox" id="defBackup">
+        <span>Резервные линии связи
+          <span class="odesc">Добавляются резервные рёбра между зонами — при отказе узла нагрузку принимает больше соседей, и рост нагрузки на каждого меньше.</span>
+        </span>
+      </label>
+
+      <label class="defense-opt">
+        <input type="checkbox" id="defShedding">
+        <span>Адаптивное отключение нагрузки
+          <span class="odesc">При превышении ёмкости не более чем на 15% система автоматически «сбрасывает» часть нагрузки вместо полного отключения узла.</span>
+        </span>
+      </label>
+
+      <div class="defense-summary" id="defenseSummary"></div>
+    </div>
+
+    <button class="primary" id="runBtn">Запустить атаку</button>
+    <button id="stepBtn" disabled>Следующий шаг →</button>
+    <button id="resetBtn" disabled>Сбросить</button>
+
+    <div class="step-readout" id="stepReadout">Выбери узел и нажми «Запустить атаку».</div>
+
+    <div class="legend">
+      <div class="row"><span class="dot" style="background:var(--ok)"></span>работает</div>
+      <div class="row"><span class="dot" style="background:var(--warn)"></span>атакован (шаг 0)</div>
+      <div class="row"><span class="dot" style="background:var(--danger)"></span>отключён каскадом</div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span>резервная линия / изолированный узел</div>
+    </div>
+  </section>
+
+  <section class="graph-wrap">
+    <svg id="graph" viewBox="0 0 1050 720" xmlns="http://www.w3.org/2000/svg"></svg>
+  </section>
+
+  <section class="panel" id="results">
+    <h2>Результаты по всем 12 узлам</h2>
+    <table id="resultsTable">
+      <thead>
+        <tr><th>Узел</th><th>Betw.</th><th>Каскад</th><th>CO₂, т</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2 style="margin-top:24px;">CO₂ по сценариям</h2>
+    <div id="co2Chart"></div>
+  </section>
+</main>
+
+<footer>
+  threshold задаёт запас ёмкости узла (порог × номинальная нагрузка) · коэффициент CO₂ = 0.68 кг/кВт·ч · резерв = 6 ч · модель упрощённая, учебная
+</footer>
+
+<script>
+/* ============ ДАННЫЕ СЕТИ (12 узлов, 5 зон) ============ */
+const allNodes = {
+  'SS_04_Astana':    {label:'Астана',    region:'Север',  kv:500, gen_mw:900,  pos:{x:430,y:260}},
+  'SS_05_Pavlodar':  {label:'Павлодар',  region:'Север',  kv:500, gen_mw:1200, pos:{x:250,y:150}},
+  'SS_10_Kostanay':  {label:'Костанай',  region:'Север',  kv:220, gen_mw:300,  pos:{x:430,y:460}},
+  'SS_07_Karaganda': {label:'Караганда', region:'Центр',  kv:500, gen_mw:1600, pos:{x:640,y:300}},
+  'SS_09_Zhezkazgan':{label:'Жезказган', region:'Центр',  kv:220, gen_mw:250,  pos:{x:830,y:300}},
+  'SS_02_Almaty':    {label:'Алматы',    region:'Юг',     kv:500, gen_mw:1300, pos:{x:940,y:420}},
+  'SS_11_Shymkent':  {label:'Шымкент',   region:'Юг',     kv:220, gen_mw:700,  pos:{x:880,y:560}},
+  'SS_12_Taraz':     {label:'Тараз',     region:'Юг',     kv:220, gen_mw:350,  pos:{x:730,y:520}},
+  'SS_01_Aktobe':    {label:'Актобе',    region:'Запад',  kv:220, gen_mw:500,  pos:{x:250,y:600}},
+  'SS_03_Atyrau':    {label:'Атырау',    region:'Запад',  kv:220, gen_mw:450,  pos:{x:110,y:660}},
+  'SS_06_Semey':     {label:'Семей',     region:'Восток', kv:220, gen_mw:400,  pos:{x:150,y:150}},
+  'SS_08_Oskemen':   {label:'Оскемен',   region:'Восток', kv:500, gen_mw:800,  pos:{x:280,y:60}},
+};
+const NODES = Object.keys(allNodes);
+const EDGES = [
+  ['SS_04_Astana','SS_07_Karaganda'], ['SS_07_Karaganda','SS_09_Zhezkazgan'],
+  ['SS_09_Zhezkazgan','SS_02_Almaty'], ['SS_02_Almaty','SS_11_Shymkent'],
+  ['SS_04_Astana','SS_05_Pavlodar'], ['SS_05_Pavlodar','SS_06_Semey'],
+  ['SS_06_Semey','SS_08_Oskemen'], ['SS_04_Astana','SS_10_Kostanay'],
+  ['SS_10_Kostanay','SS_01_Aktobe'], ['SS_01_Aktobe','SS_03_Atyrau'],
+  ['SS_11_Shymkent','SS_12_Taraz'], ['SS_12_Taraz','SS_02_Almaty'],
+];
+
+/* Резервные (защитные) линии — включаются мерой «Резервные линии связи».
+   Каждая добавляет ещё один путь между зонами, разбивая древовидные участки
+   графа на циклы, чтобы нагрузка отказавшего узла делилась на большее число
+   соседей и не концентрировалась на одном-двух узлах.
+   Намеренно соединяют только узлы с достаточным запасом ёмкости (крупные,
+   центральные подстанции) — резервная линия к периферийному узлу с нулевой
+   штатной нагрузкой не помощь, а новый путь распространения аварии: у такого
+   узла и так нет запаса, чтобы принять на себя чужую нагрузку. */
+const BACKUP_EDGES = [
+  ['SS_10_Kostanay','SS_07_Karaganda'],   // Север — Центр, в обход Астаны
+  ['SS_05_Pavlodar','SS_09_Zhezkazgan'],  // Север — Центр, второй обходной путь
+  ['SS_02_Almaty','SS_07_Karaganda'],     // Юг — Центр, в обход Жезказгана
+];
+
+const CO2_COEF = 0.68;      // кг CO2 / кВт*ч
+const BACKUP_HOURS = 6;
+const SHEDDING_RESERVE = 0.15;   // адаптивное отключение нагрузки спасает узел, если превышение ёмкости не больше 15%
+const BACKUP_CAPACITY_BONUS = 0.3; // резервные линии дают узлам +30% допустимой ёмкости
+const TOTAL_PEAK_LOAD = NODES.reduce((a,n)=>a+allNodes[n].gen_mw,0) * 1.3;
+
+const ADJ = {}; NODES.forEach(n => ADJ[n] = []);
+EDGES.forEach(([u,v]) => { ADJ[u].push(v); ADJ[v].push(u); });
+
+/* Важное методическое решение: резервные линии НЕ добавляются в ADJ и не меняют
+   схему, по которой отказавший узел передаёт нагрузку соседям. Ранняя версия
+   модели пробовала подключать резервные рёбра прямо в граф перераспределения —
+   тестирование на всех 12 сценариях показало, что это может УХУДШАТЬ результат:
+   новое ребро иногда открывает путь для перетока аварийной нагрузки в ветку
+   сети, которая раньше была от неё изолирована (см. п. 3.7 исследовательской
+   работы). Поэтому в модели резервные линии реализованы как физический запас
+   пропускной способности узла: они увеличивают его ёмкость на BACKUP_CAPACITY_BONUS,
+   что даёт гарантированно неотрицательный эффект — узел выдерживает больше,
+   но схема перетоков между узлами не меняется. Линии на графе показываются
+   как иллюстрация того, какие физические связи этот запас обеспечивают. */
+
+/* ============ ЯДРО: betweenness centrality (алгоритм Брандеса) ============ */
+function betweennessCentrality(nodes, adj){
+  const n = nodes.length;
+  const CB = {}; nodes.forEach(v => CB[v]=0);
+  for (const s of nodes){
+    const S=[]; const P={}; nodes.forEach(v=>P[v]=[]);
+    const sigma={}; nodes.forEach(v=>sigma[v]=0); sigma[s]=1;
+    const d={}; nodes.forEach(v=>d[v]=-1); d[s]=0;
+    const Q=[s]; let qi=0;
+    while(qi<Q.length){
+      const v=Q[qi++]; S.push(v);
+      for(const w of adj[v]){
+        if(d[w]<0){ Q.push(w); d[w]=d[v]+1; }
+        if(d[w]===d[v]+1){ sigma[w]+=sigma[v]; P[w].push(v); }
+      }
+    }
+    const delta={}; nodes.forEach(v=>delta[v]=0);
+    while(S.length){
+      const w=S.pop();
+      for(const v of P[w]) delta[v]+=(sigma[v]/sigma[w])*(1+delta[w]);
+      if(w!==s) CB[w]+=delta[w];
+    }
+  }
+  nodes.forEach(v=>CB[v]/=2);
+  const norm=(n-1)*(n-2)/2;
+  nodes.forEach(v=>CB[v]= norm>0 ? CB[v]/norm : 0);
+  return CB;
+}
+
+function nodeLoads(nodes, adj, totalLoad){
+  const bc = betweennessCentrality(nodes, adj);
+  const s = nodes.reduce((a,v)=>a+bc[v],0);
+  const loads = {};
+  nodes.forEach(v => loads[v] = s>0 ? totalLoad*(bc[v]/s) : totalLoad/nodes.length);
+  return {loads, bc};
+}
+
+/* ============ Каскад: локальное перераспределение нагрузки на соседей ============
+   defense = {
+     isolate:  bool — автоматическая изоляция скомпрометированного узла:
+                       его нагрузка НЕ перераспределяется на соседей (считается,
+                       что защитная автоматика/IDS отключила его линии раньше,
+                       чем успел произойти переток мощности);
+     backup:   bool — резервные линии дают всем узлам +BACKUP_CAPACITY_BONUS
+                       запаса ёмкости (см. комментарий у объявления ADJ выше);
+     shedding: bool — адаптивное отключение нагрузки: если нагрузка узла
+                       превышает ёмкость не более чем на SHEDDING_RESERVE (15%),
+                       узел не отключается, а «сбрасывает» лишнюю нагрузку
+                       (один раз на узел) и продолжает работать.
+   } */
+function simulateCascade(nodes, attackedNode, threshold, defense){
+  defense = defense || {isolate:false, backup:false, shedding:false};
+  // Схема перетоков нагрузки всегда на графе ADJ (см. комментарий у объявления
+  // ADJ выше — почему резервные линии не подключаются напрямую в граф).
+  const {loads: baseLoads} = nodeLoads(nodes, ADJ, TOTAL_PEAK_LOAD);
+  const capMult = threshold * (defense.backup ? (1+BACKUP_CAPACITY_BONUS) : 1);
+  const capacity = {}; nodes.forEach(v => capacity[v] = capMult*baseLoads[v]);
+  const currentLoad = {...baseLoads};
+  const alive = new Set(nodes);
+  const failed = [];
+  const shed = new Set();     // узлы, которые уже один раз воспользовались отключением части нагрузки
+  const isolated = new Set(); // узлы, изолированные защитой до перетока нагрузки
+  const steps = [];
+  let wave = [attackedNode];
+  let stepNum = 0;
+  let first = true;
+  while(wave.length){
+    for(const node of wave){
+      if(!alive.has(node)) continue;
+      alive.delete(node);
+      failed.push(node);
+      const isolateThis = defense.isolate && first; // изолируем только исходно атакованный узел
+      if(isolateThis) isolated.add(node);
+      const neighbors = ADJ[node].filter(nb => alive.has(nb));
+      if(neighbors.length && !isolateThis){
+        const share = currentLoad[node]/neighbors.length;
+        neighbors.forEach(nb => currentLoad[nb]+=share);
+      }
+    }
+    first = false;
+
+    // адаптивное отключение нагрузки: применяем ДО фиксации снимка шага,
+    // чтобы в шаге сразу было видно, какие узлы спасены сбросом нагрузки
+    const overloaded = nodes.filter(n => alive.has(n) && currentLoad[n] > capacity[n]);
+    const nextWave = [];
+    overloaded.forEach(n => {
+      const overshoot = currentLoad[n]/capacity[n] - 1;
+      if(defense.shedding && !shed.has(n) && overshoot <= SHEDDING_RESERVE){
+        // спасаем узел: сбрасываем нагрузку до ёмкости, узел продолжает работать
+        shed.add(n);
+        currentLoad[n] = capacity[n];
+      } else {
+        nextWave.push(n);
+      }
+    });
+
+    steps.push({step: stepNum, failed_nodes:[...failed], isolated_nodes:[...isolated], shed_nodes:[...shed]});
+    stepNum++;
+    wave = nextWave;
+  }
+  return steps;
+}
+
+function estimateEmissions(failedNodes){
+  let total = 0;
+  failedNodes.forEach(n => { total += allNodes[n].gen_mw*1000*BACKUP_HOURS*CO2_COEF; });
+  return total; // кг
+}
+
+function runAttackScenario(attackedNode, threshold, defense){
+  const steps = simulateCascade(NODES, attackedNode, threshold, defense);
+  const finalFailed = steps[steps.length-1].failed_nodes;
+  const co2 = estimateEmissions(finalFailed);
+  return { initial_attack: attackedNode, steps, total_failed_count: finalFailed.length,
+           total_co2_kg: co2, pct: Math.round(1000*finalFailed.length/NODES.length)/10 };
+}
+
+/* ============ Чтение состояния панели «Меры киберзащиты» ============ */
+function getDefenseState(){
+  return {
+    isolate:  document.getElementById('defIsolate').checked,
+    backup:   document.getElementById('defBackup').checked,
+    shedding: document.getElementById('defShedding').checked,
+  };
+}
+
+/* ============ UI: селектор узлов ============ */
+const nodeSelect = document.getElementById('nodeSelect');
+NODES.forEach(n => {
+  const opt = document.createElement('option');
+  opt.value = n;
+  opt.textContent = `${allNodes[n].label} (${n})`;
+  nodeSelect.appendChild(opt);
+});
+nodeSelect.value = 'SS_04_Astana';
+
+const thresholdSlider = document.getElementById('thresholdSlider');
+const thresholdValue = document.getElementById('thresholdValue');
+thresholdSlider.addEventListener('input', () => {
+  const t = parseFloat(thresholdSlider.value);
+  thresholdValue.textContent = t.toFixed(1);
+  if (currentAttacked){
+    runCurrentScenario();
+  } else {
+    renderResults(t);
+    updateDefenseSummary(t);
+  }
+});
+
+/* ============ SVG-граф ============ */
+const svg = document.getElementById('graph');
+const NODE_R = 26;
+
+function renderGraph(statusMap, defenseInfo){
+  // statusMap: {nodeId: 'ok'|'attacked'|'failed'}
+  // defenseInfo: {isolated:Set, shed:Set, backupOn:bool} | undefined
+  svg.innerHTML = '';
+  const ns = 'http://www.w3.org/2000/svg';
+
+  // основные линии
+  EDGES.forEach(([u,v]) => {
+    const a = allNodes[u].pos, b = allNodes[v].pos;
+    const line = document.createElementNS(ns,'line');
+    line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+    line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+    const hot = statusMap && statusMap[u]==='failed' && statusMap[v]==='failed';
+    line.setAttribute('class', 'edge' + (hot ? ' hot' : ''));
+    svg.appendChild(line);
+  });
+
+  // резервные (защитные) линии — только если включена мера «Резервные линии связи»
+  if (defenseInfo && defenseInfo.backupOn){
+    BACKUP_EDGES.forEach(([u,v]) => {
+      const a = allNodes[u].pos, b = allNodes[v].pos;
+      const line = document.createElementNS(ns,'line');
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+      line.setAttribute('class', 'edge backup');
+      svg.appendChild(line);
+    });
+  }
+
+  // nodes
+  NODES.forEach(n => {
+    const {x,y} = allNodes[n].pos;
+    const g = document.createElementNS(ns,'g');
+
+    const circle = document.createElementNS(ns,'circle');
+    circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', NODE_R);
+    let fill = 'var(--ok)';
+    if (statusMap){
+      if (statusMap[n] === 'attacked') fill = 'var(--warn)';
+      else if (statusMap[n] === 'failed') fill = 'var(--danger)';
+    }
+    circle.setAttribute('style', `fill:${fill}`);
+    let circleClass = 'node-circle';
+    if (defenseInfo && defenseInfo.isolated && defenseInfo.isolated.has(n)) circleClass += ' shielded';
+    else if (defenseInfo && defenseInfo.shed && defenseInfo.shed.has(n)) circleClass += ' shed';
+    circle.setAttribute('class', circleClass);
+    g.appendChild(circle);
+
+    const label = document.createElementNS(ns,'text');
+    label.setAttribute('x', x); label.setAttribute('y', y+4);
+    label.setAttribute('class', 'node-label');
+    label.textContent = allNodes[n].label;
+    g.appendChild(label);
+
+    const sub = document.createElementNS(ns,'text');
+    sub.setAttribute('x', x); sub.setAttribute('y', y+NODE_R+14);
+    sub.setAttribute('class', 'node-sub');
+    sub.textContent = allNodes[n].region;
+    g.appendChild(sub);
+
+    svg.appendChild(g);
+  });
+}
+
+/* ============ Пошаговое воспроизведение каскада ============ */
+let currentSteps = null;
+let currentStepIdx = 0;
+let currentAttacked = null;
+
+function statusMapForStep(idx){
+  const map = {}; NODES.forEach(n => map[n]='ok');
+  if (currentSteps){
+    currentSteps[idx].failed_nodes.forEach(n => map[n] = 'failed');
+    map[currentAttacked] = idx===0 ? 'attacked' : 'failed';
+  }
+  return map;
+}
+
+function defenseInfoForStep(idx){
+  const def = getDefenseState();
+  const info = { backupOn: def.backup, isolated: new Set(), shed: new Set() };
+  if (currentSteps){
+    (currentSteps[idx].isolated_nodes||[]).forEach(n => info.isolated.add(n));
+    (currentSteps[idx].shed_nodes||[]).forEach(n => info.shed.add(n));
+  }
+  return info;
+}
+
+function updateReadout(idx){
+  const readout = document.getElementById('stepReadout');
+  if (!currentSteps){ readout.innerHTML = 'Выбери узел и нажми «Запустить атаку».'; return; }
+  const step = currentSteps[idx];
+  let html =
+    `<b>Шаг ${step.step}</b> из ${currentSteps.length-1}<br>` +
+    `Отключено: <b>${step.failed_nodes.length}</b> из ${NODES.length}<br>` +
+    step.failed_nodes.map(n=>allNodes[n].label).join(', ');
+  if (step.isolated_nodes && step.isolated_nodes.length){
+    html += `<br>🛡 Изолирован защитой: <b>${step.isolated_nodes.map(n=>allNodes[n].label).join(', ')}</b>`;
+  }
+  if (step.shed_nodes && step.shed_nodes.length){
+    html += `<br>🛡 Спасён сбросом нагрузки: <b>${step.shed_nodes.map(n=>allNodes[n].label).join(', ')}</b>`;
+  }
+  readout.innerHTML = html;
+}
+
+function runCurrentScenario(){
+  currentAttacked = nodeSelect.value;
+  const threshold = parseFloat(thresholdSlider.value);
+  const defense = getDefenseState();
+  currentSteps = simulateCascade(NODES, currentAttacked, threshold, defense);
+  currentStepIdx = 0;
+  renderGraph(statusMapForStep(0), defenseInfoForStep(0));
+  updateReadout(0);
+  document.getElementById('stepBtn').disabled = currentSteps.length <= 1;
+  document.getElementById('resetBtn').disabled = false;
+  renderResults(threshold);
+  updateDefenseSummary(threshold);
+}
+
+document.getElementById('runBtn').addEventListener('click', runCurrentScenario);
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if (!currentSteps) return;
+  if (currentStepIdx < currentSteps.length - 1) currentStepIdx++;
+  renderGraph(statusMapForStep(currentStepIdx), defenseInfoForStep(currentStepIdx));
+  updateReadout(currentStepIdx);
+  document.getElementById('stepBtn').disabled = currentStepIdx >= currentSteps.length - 1;
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  currentSteps = null; currentAttacked = null; currentStepIdx = 0;
+  renderGraph(null);
+  updateReadout(0);
+  document.getElementById('stepBtn').disabled = true;
+  document.getElementById('resetBtn').disabled = true;
+});
+
+/* Изменение любой меры защиты — пересчитываем текущий сценарий (если он запущен)
+   и таблицу по всем 12 узлам, чтобы эффект был виден сразу. */
+['defIsolate','defBackup','defShedding'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    const threshold = parseFloat(thresholdSlider.value);
+    if (currentAttacked){
+      runCurrentScenario();
+    } else {
+      renderResults(threshold);
+      updateDefenseSummary(threshold);
+    }
+  });
+});
+
+/* ============ Таблица результатов + CO2-диаграмма ============ */
+function renderResults(threshold){
+  const defense = getDefenseState();
+  const {bc} = nodeLoads(NODES, ADJ, TOTAL_PEAK_LOAD);
+  const rows = NODES.map(n => {
+    const r = runAttackScenario(n, threshold, defense);
+    return { node:n, betw: bc[n], cascade: r.total_failed_count, co2: Math.round(r.total_co2_kg/1000) };
+  }).sort((a,b) => b.cascade - a.cascade || b.co2 - a.co2);
+
+  const tbody = document.querySelector('#resultsTable tbody');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    if (r.node === currentAttacked) tr.className = 'current-row';
+    tr.innerHTML = `<td>${allNodes[r.node].label}</td><td>${r.betw.toFixed(3)}</td><td>${r.cascade}</td><td>${r.co2}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const chartWrap = document.getElementById('co2Chart');
+  chartWrap.innerHTML = '';
+  const maxCo2 = Math.max(...rows.map(r=>r.co2));
+  rows.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'chart-bar-row';
+    const pct = maxCo2 > 0 ? Math.round(100*r.co2/maxCo2) : 0;
+    row.innerHTML =
+      `<div class="chart-bar-label">${allNodes[r.node].label}</div>` +
+      `<div class="chart-bar-track"><div class="chart-bar-fill" style="width:${pct}%"></div></div>` +
+      `<div class="chart-bar-value">${r.co2} т</div>`;
+    chartWrap.appendChild(row);
+  });
+}
+
+/* ============ Сводка эффективности защиты ============
+   Сравнивает суммарный каскад и CO2 по всем 12 сценариям атаки
+   БЕЗ защиты (базовый граф ADJ, defense все выключены) и
+   С текущими включёнными мерами защиты. Используется как для UI,
+   так и как источник цифр для исследовательской работы. */
+function computeAggregate(threshold, defense){
+  let cascadeSum = 0, co2Sum = 0;
+  NODES.forEach(n => {
+    const r = runAttackScenario(n, threshold, defense);
+    cascadeSum += r.total_failed_count;
+    co2Sum += r.total_co2_kg;
+  });
+  return { cascadeSum, co2Sum };
+}
+
+function updateDefenseSummary(threshold){
+  const box = document.getElementById('defenseSummary');
+  const defense = getDefenseState();
+  const anyOn = defense.isolate || defense.backup || defense.shedding;
+  if (!anyOn){
+    box.classList.remove('active');
+    box.innerHTML = '';
+    return;
+  }
+  const baseline = computeAggregate(threshold, {isolate:false, backup:false, shedding:false});
+  const withDefense = computeAggregate(threshold, defense);
+  const cascadeReduction = baseline.cascadeSum > 0
+    ? Math.round(100*(1 - withDefense.cascadeSum/baseline.cascadeSum))
+    : 0;
+  const co2Reduction = baseline.co2Sum > 0
+    ? Math.round(100*(1 - withDefense.co2Sum/baseline.co2Sum))
+    : 0;
+  box.classList.add('active');
+  box.innerHTML =
+    `Сумма каскадов (12 сценариев): <b>${withDefense.cascadeSum}</b> вместо <b>${baseline.cascadeSum}</b> узлов<br>` +
+    `Снижение масштаба каскада: <b>${cascadeReduction}%</b><br>` +
+    `Снижение аварийных CO₂: <b>${co2Reduction}%</b>`;
+}
+
+/* ============ Инициализация ============ */
+renderGraph(null);
+renderResults(parseFloat(thresholdSlider.value));
+updateDefenseSummary(parseFloat(thresholdSlider.value));
+</script>
+</body>
+</html>
